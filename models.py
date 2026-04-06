@@ -31,29 +31,7 @@ class PatchEmbed(nn.Module): #patch partition and linear embedding
         x = self.norm(x)
 
         return x
-    
-class PatchMerging(nn.Module):
-    def __init__(self,input_resolution,dim):
-        super().__init__()
-
-    def forward(self, x):
-        x = x.split(input_resolution, dim)
-        for each i of the same group:
-            concatenate(x[i])
-    
-        return x
-    
-class SelfAttention():
-
-    def forward(x):
-        for query in tokens:
-            new_value = Vector()
-
-            for (key, value) in tokens:
-                new_value += value * similarity(key, query)
-
-
-    
+        
 def window_partition(x, win):
     B, H, W, C = x.shape
     x = x.view(B, H//win, win, W//win, win, C)
