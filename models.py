@@ -124,11 +124,34 @@ class WindowAttention(nn.Module):
         out = self.proj(out)
         return out
 
-        
-
-
-
-
 class SwinTransformerBlock(nn.Module):
     def __init__(self):
         super().__init__()
+
+class PatchMerging(nn.Module):
+    def __init__(self, dim):
+        super().__init__()
+        self.dim = dim
+        self.reduction = nn.Linear(4*dim, 2*dim, bias=False)
+        self.norm = nn.LayerNorm(4*dim)
+
+    def forward(self, x, H, W):
+        B, L, C = x.shape
+        x = x.view(B, H, W, C)
+
+        x0 = x[:, 0::2, 0::2, :]
+        x1 = x[:, 1::2, 0::2, :]
+        x2 = x[:, 0::2, 1::2, :]
+        x3 = x[:, 1::2, 1::2, :]
+
+        x0 = x0.reshape(B, -1, C)
+        x1 = x1.reshape(B, -1, C)
+        x2 = x2.reshape(B, -1, C)
+        x3 = x3.reshape(B, -1, C)
+
+        x = torch.cat([x0, x1, x2, x3], -1)
+
+        x = self.norm(x)
+        x = self.reduction(x)
+
+        return x, H//2, W//2
