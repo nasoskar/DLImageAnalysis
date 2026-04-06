@@ -28,7 +28,7 @@ val_test_transform = A.Compose([
     ToTensorV2()
 ])
 
-class SkinLesionSegmentation(Dataset):
+class CTLesionSegmentation(Dataset):
     def __init__(self, images, masks, transform=None):
         self.data = images.reset_index(drop=True)
         self.masks = masks.reset_index(drop=True)
@@ -39,7 +39,7 @@ class SkinLesionSegmentation(Dataset):
 
     def __getitem__(self, idx):
 
-        image = Image.open(self.data[idx]).convert('RGB')
+        image = Image.open(self.data[idx]).convert('RGB') #3 grayscale channels
         image_np = np.array(image)
 
         masks = Image.open(self.masks[idx]).convert('L')
@@ -61,14 +61,14 @@ class SkinLesionSegmentation(Dataset):
 def create_dataframe():
     df = pd.DataFrame()
 
-    training_folder = 'ISIC2018_Task1-2_Training_Input'
-    groundtruth = 'ISIC2018_Task1_Training_GroundTruth'
+    training_folder = 'frames'
+    groundtruth = 'masks'
 
-    img_ids = [f.replace('.jpg', '') for f in os.listdir(training_folder) if f.endswith('.jpg')]
+    img_ids = [f.replace('.png', '') for f in os.listdir(training_folder) if f.endswith('.png')]
 
     df = pd.DataFrame({
-        'feature': [os.path.join(training_folder, f'{i}.jpg') for i in img_ids],
-        'target':  [os.path.join(groundtruth, f'{i}_segmentation.png') for i in img_ids]
+        'feature': [os.path.join(training_folder, f'{i}.png') for i in img_ids],
+        'target':  [os.path.join(groundtruth, f'{i}.png') for i in img_ids]
     })
 
     return df
@@ -90,14 +90,15 @@ df = create_dataframe()
 X_train, y_train, X_val, y_val, X_test, y_test = split_dataset(df)
 
 #Step 3: Create Dataset objects
-train_ds = SkinLesionSegmentation(X_train, y_train, transform=train_transform)
-val_ds   = SkinLesionSegmentation(X_val,   y_val,   transform=val_test_transform)
-test_ds  = SkinLesionSegmentation(X_test,  y_test,  transform=val_test_transform)
+train_ds = CTLesionSegmentation(X_train, y_train, transform=train_transform)
+val_ds   = CTLesionSegmentation(X_val,   y_val,   transform=val_test_transform)
+test_ds  = CTLesionSegmentation(X_test,  y_test,  transform=val_test_transform)
 
 #Step 4:  Call DataLoader
-train_dataloader = DataLoader(train_ds, batch_size=16, shuffle=True)
-val_dataloader = DataLoader(val_ds, batch_size=16, shuffle=False)
-test_dataloader = DataLoader(test_ds, batch_size=16, shuffle=False)
+BATCH_SIZE = 16
+train_dataloader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True)
+val_dataloader = DataLoader(val_ds, batch_size=BATCH_SIZE, shuffle=False)
+test_dataloader = DataLoader(test_ds, batch_size=BATCH_SIZE, shuffle=False)
 
 #for data in train_dataloader:
 #    print(data)
@@ -107,3 +108,34 @@ print(f'Image shape: {images.shape}')   # expect (16, 3, 256, 256)
 print(f'Mask shape:  {masks.shape}')    # expect (16, 1, 256, 256)
 print(f'Image range: {images.min():.2f} to {images.max():.2f}')
 print(f'Mask values: {masks.unique()}') # expect tensor([0., 1.])
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+def imshow(tensor_img, tensor_mask=None):
+    # denormalise image
+    mean = np.array([0.485, 0.456, 0.406])
+    std  = np.array([0.229, 0.224, 0.225])
+    
+    img = tensor_img.numpy().transpose((1, 2, 0))  # (C,H,W) -> (H,W,C)
+    img = std * img + mean                          # denormalise
+    img = np.clip(img, 0, 1)                        # clip to valid range
+    
+    if tensor_mask is not None:
+        fig, axes = plt.subplots(1, 2, figsize=(8, 4))
+        axes[0].imshow(img)
+        axes[0].set_title('Image')
+        axes[1].imshow(tensor_mask.squeeze(), cmap='gray')
+        axes[1].set_title('Mask')
+    else:
+        plt.imshow(img)
+    
+    plt.show()
+
+# Visualise a few samples from your dataloader
+images, masks = next(iter(train_dataloader))
+
+for i in range(3):
+    imshow(images[i], masks[i])
+
+imshow(images,masks)
