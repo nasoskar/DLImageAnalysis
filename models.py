@@ -1,7 +1,7 @@
 import torch.nn as nn
 import torch
 
-def conv_block():
+def bottleneck():
     pass
 
 def encoder():
@@ -13,7 +13,7 @@ def decoder():
 def UNet():
     encoder()
 
-    conv_block()
+    bottleneck()
 
     decoder()
 
@@ -103,8 +103,72 @@ class WindowAttention(nn.Module):
         return out
 
 class SwinTransformerBlock(nn.Module):
-    def __init__(self):
+    def __init__(self, dim, res, win, shift, heads):
         super().__init__()
+        self.dim = dim
+        self.res = res
+        self.win = win 
+        self.shift = shift
+
+        self.norm1 = nn.LayerNorm()
+        self.attn = WindowAttention(dim, heads, win)
+
+        self.norm2 = nn.LayerNorm()
+        self.mlp = nn.Sequential( 
+            nn.Linear(dim, 4*dim),
+            nn.GELU(),
+            nn.Linear(4*dim, dim))
+        
+        H, W = res
+
+        if shift > 0:
+            self.mask = self.create_mask(H, W, win, shift)
+        else:
+            self.mask = None
+
+    def create_mask(self, H, W, win, shift):
+        img_mask = torch.zeros(1,H,W,1)
+        count = 0
+
+        for h in (slice(0,-win)), (slice(-win,-shift)), slice(-shift, None):
+            for w in (slice(0,-win)), (slice(-win,-shift)), slice(-shift, None):
+                img_mask[:,h,w,:] = count
+                count += 1
+            
+        mask = window_partition(img_mask, win)
+        mask = mask.view(-1, win*win)
+        mask = mask.unsqueeze(1) - mask.unsqueeze(2)
+        mask = mask.masked_fill(mask!=0, -10000.0)
+
+        return mask
+    
+    def forward(self, x):
+        B, L, C = x.shape
+        H, W = self.res
+
+        residual = x
+        x = self.norm1(x)
+
+        if self.shift > 0:
+            x = torch.roll(x, shifts = (-self.shift, -self.shift), dims=(1,2))
+        
+        win_x = window_partition(x, self.win).view(-1, self.win*self.win, C)
+        attn_out = self.attn(win_x, self.mask.to(x.device) if self.mask is not None else None)
+
+        x = window_reverse(attn_out, self.win, H, W)
+
+        if self.shift > 0:
+            x = torch.roll(x, shifts = (+self.shift, +self.shift), dims=(1,2))
+        
+        x = residual + x.view(B,L,C)
+        residual2 = x
+        x = self.norm2(x)
+        x = self.mlp(x)
+        x = x + residual2
+
+        return x
+
+
 
 class PatchMerging(nn.Module):
     def __init__(self, dim):
