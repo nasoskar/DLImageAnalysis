@@ -3,12 +3,95 @@ import torch
 
 def bottleneck():
     pass
+    #swin transformerx1
+    #swin transformerx1
 
-def encoder():
-    pass
+class BasicLayer(nn.Module):
+    def __init__(self, dim, depth, num_heads, win):
+        super().__init__()
+        # create a list of SwinTransformerBlocks
+        # depth = number of blocks (usually 2)
+        # alternate shift: block i has shift = 0 if i%2==0 else win//2
+        self.blocks = nn.ModuleList([
+            SwinTransformerBlock(
+                dim=dim,
+                win=win,
+                shift=0 if i%2==0 else win//2,
+                heads=num_heads
+            )
+            for i in range(depth)
+        ])
 
-def decoder():
-    pass
+    def forward(self, x, H, W):
+        for block in self.blocks:
+            x = block(x)
+        return x
+
+class encoder(nn.Module):
+    def __init__(self, img_size, patch_size, in_channels, embed_dim, win, heads, swin_depth):
+        super().__init__()
+        self.patchembed = PatchEmbed(img_size, patch_size, in_channels, embed_dim)
+
+        self.layer1 = BasicLayer(dim=embed_dim, swin_depth=swin_depth, heads=heads, win=win)
+        self.merge1  = PatchMerging(embed_dim)
+
+        self.layer2 = BasicLayer(dim=embed_dim*2, swin_depth=swin_depth, heads=heads, win=win)
+        self.merge2  = PatchMerging(embed_dim*2)
+
+        self.layer3 = BasicLayer(dim=embed_dim*4, swin_depth=swin_depth, heads=heads, win=win)
+        self.merge3  = PatchMerging(embed_dim*4)
+
+
+    def forward(self, x):
+        x, H, W = self.patchembed(x)
+        
+        x = self.layer1(x, H, W)
+        skip1 = x
+        x, H, W = self.merge1(x, H, W)
+
+        x = self.layer2(x, H, W)
+        skip2 = x
+        x, H, W  = self.merge2(x, H, W)
+
+        x = self.layer3(x, H, W)
+        skip3 = x
+        x, H, W = self.merge3(x, H, W)
+
+        return x, H, W, skip1, skip2, skip3
+
+    
+
+class decoder(nn.Module):
+    def __init__(self, dim, depth, num_heads, win):
+        super().__init__()
+
+        self.exp1 = PatchExpanding(dim*4)
+        self.layer1 = BasicLayer(dim*2, depth, num_heads, win)
+
+        self.exp2 = PatchExpanding(dim*2)
+        self.layer2 = BasicLayer(dim, depth, num_heads, win)
+
+        self.exp3 = PatchExpanding(dim)
+        self.layer3 = BasicLayer(dim//2, depth, num_heads, win)
+
+        self.finalexp = FinalPatchExpand(dim//2, scale=4)
+
+    def forward(self, x, H, W, skip1, skip2, skip3):
+
+        x, H, W = self.exp1(x, H, W)
+        x = self.layer1(x + skip3,H,W)
+
+        x, H, W = self.exp2(x, H, W)
+        x = self.layer2(x + skip2,H,W)
+
+        x, H, W = self.exp3(x, H, W)
+        x = self.layer3(x + skip1,H,W)
+
+        x, H, W = self.finalexp(x, H, W)
+
+        return x, H, W
+
+
 
 def UNet():
     encoder()
@@ -16,6 +99,9 @@ def UNet():
     bottleneck()
 
     decoder()
+
+    #linearprojection()
+    #skip connections()
 
 # TODO: patch size needs to be divisible by patch size(256/4=64)
 class PatchEmbed(nn.Module): #patch partition and linear embedding
@@ -26,11 +112,12 @@ class PatchEmbed(nn.Module): #patch partition and linear embedding
 
     def forward(self, x):
         x = self.split(x)
+        H, W = x.shape[2], x.shape[3]
         x = x.flatten(2)
         x = x.transpose(1,2)
         x = self.norm(x)
 
-        return x
+        return x, H, W
         
 def window_partition(x, win):
     B, H, W, C = x.shape
@@ -39,7 +126,7 @@ def window_partition(x, win):
     return x
 
 def window_reverse(windows, win, H, W):
-    B = windows[0]/(H//win * W//win) #divide to get the number of batches
+    B = int(windows.shape[0] / (H//win * W//win)) #divide to get the number of batches
     x = windows.view(B, H//win, W//win, win, win, -1)
     x = x.permute(0,1,3,2,4,5)
     x = x.reshape(B, H, W, -1)
@@ -84,6 +171,10 @@ class WindowAttention(nn.Module):
         q = self.q(x)
         v = self.v(x)
         k = self.k(x)
+        
+        q = q.reshape(B_, N, self.num_heads, self.head_dim).permute(0, 2, 1, 3)  # (B_, heads, N, head_dim)
+        k = k.reshape(B_, N, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
+        v = v.reshape(B_, N, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
 
         q = q*self.scale
         attn = q @ k.transpose(-2,-1)
@@ -98,7 +189,7 @@ class WindowAttention(nn.Module):
             attn = attn.view(-1, self.num_heads, N, N)
 
         attn = attn.softmax(dim=-1)
-        out = (attn @ v).transpose(1,2).reshape(B_,N,C)
+        out = (attn @ v).transpose(1, 2).reshape(B_, N, C)
         out = self.proj(out)
         return out
 
@@ -110,10 +201,10 @@ class SwinTransformerBlock(nn.Module):
         self.win = win 
         self.shift = shift
 
-        self.norm1 = nn.LayerNorm()
+        self.norm1 = nn.LayerNorm(dim)
         self.attn = WindowAttention(dim, heads, win)
 
-        self.norm2 = nn.LayerNorm()
+        self.norm2 = nn.LayerNorm(dim)
         self.mlp = nn.Sequential( 
             nn.Linear(dim, 4*dim),
             nn.GELU(),
@@ -152,6 +243,7 @@ class SwinTransformerBlock(nn.Module):
         if self.shift > 0:
             x = torch.roll(x, shifts = (-self.shift, -self.shift), dims=(1,2))
         
+        x = x.view(B, H, W, C)
         win_x = window_partition(x, self.win).view(-1, self.win*self.win, C)
         attn_out = self.attn(win_x, self.mask.to(x.device) if self.mask is not None else None)
 
@@ -197,3 +289,53 @@ class PatchMerging(nn.Module):
         x = self.reduction(x)
 
         return x, H//2, W//2
+    
+class PatchExpanding(nn.Module):
+    def __init__(self, dim):
+        super().__init__()
+        self.dim = dim
+
+        self.expand = nn.Linear(dim, 2 * dim, bias=False)
+        self.norm = nn.LayerNorm(dim // 2)
+
+    def forward(self, x, H, W):
+        B, L, C = x.shape
+
+        # expand channels
+        x = self.expand(x)  # B, L, 2C
+
+        # reshape to image
+        x = x.view(B, H, W, 2 * C)
+
+        x = x.view(B, H, W, 2, 2, C // 2)
+
+        x = x.permute(0, 1, 3, 2, 4, 5).contiguous()
+        x = x.view(B, H * 2, W * 2, C // 2)
+        x = x.view(B, -1, C // 2)
+
+        x = self.norm(x)
+
+        return x, H * 2, W * 2
+    
+class FinalPatchExpand(nn.Module):
+    def __init__(self, dim, scale=4):
+        super().__init__()
+        self.expand = nn.Linear(dim, dim * scale * scale, bias=False)
+        self.norm = nn.LayerNorm(dim)
+
+        self.scale = scale
+        self.dim = dim
+
+    def forward(self, x, H, W):
+        B, L, C = x.shape
+
+        x = self.expand(x)
+        x = x.view(B, H, W, self.scale, self.scale, self.dim)
+
+        x = x.permute(0,1,3,2,4,5).contiguous()
+        x = x.view(B, H*self.scale, W*self.scale, self.dim)
+
+        x = x.view(B, -1, self.dim)
+        x = self.norm(x)
+
+        return x, H*self.scale, W*self.scale
