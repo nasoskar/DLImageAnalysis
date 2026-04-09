@@ -1,10 +1,17 @@
 import torch.nn as nn
 import torch
 
-def bottleneck():
-    pass
-    #swin transformerx1
-    #swin transformerx1
+class Bottleneck(nn.Module):
+    def __init__(self, embed_dim, heads, win):
+        super().__init__()
+        self.bottleneck = BasicLayer(dim=embed_dim*8, depth=2, num_heads=heads, win=win)
+
+    def forward(self, x, H, W):
+
+        x  = self.bottleneck(x, H, W)
+
+        return x
+
 
 class BasicLayer(nn.Module):
     def __init__(self, dim, depth, num_heads, win):
@@ -78,7 +85,7 @@ class decoder(nn.Module):
 
     def forward(self, x, H, W, skip1, skip2, skip3):
 
-        x, H, W = self.exp1(x, H, W)
+        x, H, W = self.exp1(x, H, W)#TODO: concat instead of addition
         x = self.layer1(x + skip3,H,W)
 
         x, H, W = self.exp2(x, H, W)
