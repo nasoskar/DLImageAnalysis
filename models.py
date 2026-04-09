@@ -100,15 +100,26 @@ class decoder(nn.Module):
 
 
 
-def UNet():
-    encoder()
+class UNet(nn.Module):
+    def __init__(self, img_size, patch_size, in_channels, embed_dim, win, heads, swin_depth, depth, num_classes):
+        super().__init__()
+        self.enc = encoder(img_size, patch_size, in_channels, embed_dim, win, heads, swin_depth)
+        self.bott = Bottleneck(embed_dim, heads, win)
+        self.dec = decoder(embed_dim, depth, heads, win)
+        self.head = nn.Conv2d(embed_dim, num_classes, kernel_size=1)
 
-    bottleneck()
+    def forward(self, x):
 
-    decoder()
+        x, H, W, skip1, skip2, skip3 = self.enc(x)
+        x = self.bott(x, H, W)
+        x, H, W = self.dec(x, H, W, skip1, skip2, skip3)
+        
+        # reshape for conv head
+        B = x.shape[0]
+        x = x.view(B, H, W, -1).permute(0, 3, 1, 2)  # (B, C, H, W)
+        x = self.head(x)
+        return x
 
-    #linearprojection()
-    #skip connections()
 
 # TODO: patch size needs to be divisible by patch size(256/4=64)
 class PatchEmbed(nn.Module): #patch partition and linear embedding
