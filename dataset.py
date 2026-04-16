@@ -39,7 +39,7 @@ class CTLesionSegmentation(Dataset):
 
     def __getitem__(self, idx):
 
-        image = Image.open(self.data[idx]).convert('RGB') #3 grayscale channels
+        image = Image.open(self.data[idx]).convert('L') # grayscale images
         image_np = np.array(image)
 
         masks = Image.open(self.masks[idx]).convert('L')
@@ -80,62 +80,3 @@ def split_dataset(df):
     X_val, X_test, y_val, y_test = train_test_split(X_temp, y_temp, train_size = 0.5, shuffle=True, random_state=42) 
 
     return X_train, y_train, X_val, y_val, X_test, y_test
-
-
-#---PROCESS---
-#Step 1: create dataframe based on the image paths
-df = create_dataframe()
-
-#Step 2: Split the dataset
-X_train, y_train, X_val, y_val, X_test, y_test = split_dataset(df)
-
-#Step 3: Create Dataset objects
-train_ds = CTLesionSegmentation(X_train, y_train, transform=train_transform)
-val_ds   = CTLesionSegmentation(X_val,   y_val,   transform=val_test_transform)
-test_ds  = CTLesionSegmentation(X_test,  y_test,  transform=val_test_transform)
-
-#Step 4:  Call DataLoader
-BATCH_SIZE = 16
-train_dataloader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True)
-val_dataloader = DataLoader(val_ds, batch_size=BATCH_SIZE, shuffle=False)
-test_dataloader = DataLoader(test_ds, batch_size=BATCH_SIZE, shuffle=False)
-
-#for data in train_dataloader:
-#    print(data)
-images, masks = next(iter(train_dataloader))
-
-print(f'Image shape: {images.shape}')   # expect (16, 3, 256, 256)
-print(f'Mask shape:  {masks.shape}')    # expect (16, 1, 256, 256)
-print(f'Image range: {images.min():.2f} to {images.max():.2f}')
-print(f'Mask values: {masks.unique()}') # expect tensor([0., 1.])
-
-import matplotlib.pyplot as plt
-import numpy as np
-
-def imshow(tensor_img, tensor_mask=None):
-    # denormalise image
-    mean = np.array([0.485, 0.456, 0.406])
-    std  = np.array([0.229, 0.224, 0.225])
-    
-    img = tensor_img.numpy().transpose((1, 2, 0))  # (C,H,W) -> (H,W,C)
-    img = std * img + mean                          # denormalise
-    img = np.clip(img, 0, 1)                        # clip to valid range
-    
-    if tensor_mask is not None:
-        fig, axes = plt.subplots(1, 2, figsize=(8, 4))
-        axes[0].imshow(img)
-        axes[0].set_title('Image')
-        axes[1].imshow(tensor_mask.squeeze(), cmap='gray')
-        axes[1].set_title('Mask')
-    else:
-        plt.imshow(img)
-    
-    plt.show()
-
-# Visualise a few samples from your dataloader
-images, masks = next(iter(train_dataloader))
-
-for i in range(3):
-    imshow(images[i], masks[i])
-
-imshow(images,masks)

@@ -2,9 +2,9 @@ import torch.nn as nn
 import torch
 
 class Bottleneck(nn.Module):
-    def __init__(self, embed_dim, heads, win):
+    def __init__(self, embed_dim, heads, win, img_size, patch_size):
         super().__init__()
-        self.bottleneck = BasicLayer(dim=embed_dim*8, depth=2, num_heads=heads, win=win)
+        self.bottleneck = BasicLayer(dim=embed_dim*8, swin_depth=2, heads=heads, win=win, res=(img_size//patch_size//8, img_size//patch_size//8))
 
     def forward(self, x, H, W):
 
@@ -14,7 +14,7 @@ class Bottleneck(nn.Module):
 
 
 class BasicLayer(nn.Module):
-    def __init__(self, dim, depth, num_heads, win):
+    def __init__(self, dim, swin_depth, heads, win,res):
         super().__init__()
         # create a list of SwinTransformerBlocks
         # depth = number of blocks (usually 2)
@@ -22,16 +22,17 @@ class BasicLayer(nn.Module):
         self.blocks = nn.ModuleList([
             SwinTransformerBlock(
                 dim=dim,
+                res=res,
                 win=win,
                 shift=0 if i%2==0 else win//2,
-                heads=num_heads
+                heads=heads
             )
-            for i in range(depth)
+            for i in range(swin_depth)
         ])
 
     def forward(self, x, H, W):
         for block in self.blocks:
-            x = block(x)
+            x = block(x, H, W)
         return x
 
 class encoder(nn.Module):
@@ -39,13 +40,13 @@ class encoder(nn.Module):
         super().__init__()
         self.patchembed = PatchEmbed(img_size, patch_size, in_channels, embed_dim)
 
-        self.layer1 = BasicLayer(dim=embed_dim, swin_depth=swin_depth, heads=heads, win=win)
+        self.layer1 = BasicLayer(dim=embed_dim, swin_depth=swin_depth, heads=heads, win=win, res=(img_size//patch_size, img_size//patch_size))
         self.merge1  = PatchMerging(embed_dim)
 
-        self.layer2 = BasicLayer(dim=embed_dim*2, swin_depth=swin_depth, heads=heads, win=win)
+        self.layer2 = BasicLayer(dim=embed_dim*2, swin_depth=swin_depth, heads=heads, win=win, res=(img_size//patch_size//2, img_size//patch_size//2))
         self.merge2  = PatchMerging(embed_dim*2)
 
-        self.layer3 = BasicLayer(dim=embed_dim*4, swin_depth=swin_depth, heads=heads, win=win)
+        self.layer3 = BasicLayer(dim=embed_dim*4, swin_depth=swin_depth, heads=heads, win=win, res=(img_size//patch_size//4, img_size//patch_size//4))
         self.merge3  = PatchMerging(embed_dim*4)
 
 
@@ -69,19 +70,19 @@ class encoder(nn.Module):
     
 
 class decoder(nn.Module):
-    def __init__(self, dim, depth, num_heads, win):
+    def __init__(self, dim, depth, num_heads, win, img_size, patch_size):
         super().__init__()
 
-        self.exp1 = PatchExpanding(dim*4)
-        self.layer1 = BasicLayer(dim*2, depth, num_heads, win)
+        self.exp1 = PatchExpanding(dim*8)
+        self.layer1 = BasicLayer(dim*4, depth, num_heads, win, res=(img_size//patch_size//4,  img_size//patch_size//4))
 
-        self.exp2 = PatchExpanding(dim*2)
-        self.layer2 = BasicLayer(dim, depth, num_heads, win)
+        self.exp2 = PatchExpanding(dim*4)
+        self.layer2 = BasicLayer(dim*2, depth, num_heads, win, res=(img_size//patch_size//2,  img_size//patch_size//2))
 
-        self.exp3 = PatchExpanding(dim)
-        self.layer3 = BasicLayer(dim//2, depth, num_heads, win)
+        self.exp3 = PatchExpanding(dim*2)
+        self.layer3 = BasicLayer(dim, depth, num_heads, win, res=(img_size//patch_size,  img_size//patch_size))
 
-        self.finalexp = FinalPatchExpand(dim//2, scale=4)
+        self.finalexp = FinalPatchExpand(dim, scale=4)
 
     def forward(self, x, H, W, skip1, skip2, skip3):
 
@@ -101,11 +102,11 @@ class decoder(nn.Module):
 
 
 class UNet(nn.Module):
-    def __init__(self, img_size, patch_size, in_channels, embed_dim, win, heads, swin_depth, depth, num_classes):
+    def __init__(self, img_size, patch_size, in_channels, embed_dim, win, heads, swin_depth, num_classes):
         super().__init__()
         self.enc = encoder(img_size, patch_size, in_channels, embed_dim, win, heads, swin_depth)
-        self.bott = Bottleneck(embed_dim, heads, win)
-        self.dec = decoder(embed_dim, depth, heads, win)
+        self.bott = Bottleneck(embed_dim, heads, win, img_size, patch_size)
+        self.dec = decoder(embed_dim, swin_depth, heads, win, img_size, patch_size)
         self.head = nn.Conv2d(embed_dim, num_classes, kernel_size=1)
 
     def forward(self, x):
@@ -251,7 +252,7 @@ class SwinTransformerBlock(nn.Module):
 
         return mask
     
-    def forward(self, x):
+    def forward(self, x, H, W):
         B, L, C = x.shape
         H, W = self.res
 
