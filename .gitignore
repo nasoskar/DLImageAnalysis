@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+
+# Training artifacts
+checkpoints/
+pretrained_ckpt/
+wandb/
+
+# Data
+frames/
+masks/
+
+# PDFs
+*.pdf
