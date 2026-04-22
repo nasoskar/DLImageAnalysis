@@ -135,39 +135,38 @@ if __name__ == "__main__":
     train_dataloader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True, num_workers=4, pin_memory=True)
     val_dataloader = DataLoader(val_ds, batch_size=BATCH_SIZE, shuffle=False, num_workers=4, pin_memory=True)
 
-    for depth_values in SWIN_DEPTH:
 
-        run = wandb.init(
-        entity="nasosk16-city-university-of-london",
-        name=f"swindepth_{depth_values}",
-        project="CT-scan-segmentation",
+    run = wandb.init(
+    entity="nasosk16-city-university-of-london",
+    name=f"BEST_PARAMS_VANILLA",
+    project="CT-scan-segmentation",
 
-        config={
-            "epochs": EPOCHS,
-            "batch_size": BATCH_SIZE,
-            "lr": LR,
-            "embed_dim": EMBED_DIM,
-            "win": WIN,
-            "heads": HEADS,
-            "swin_depth": depth_values,
-            'patch_size': PATCH_SIZE,
-            'LOSS_FUNCTION': LOSS_FUNCTION,
-            'optimizer': OPTIMIZER,
-            'dropout': DROPOUT
-        },
-        )
+    config={
+        "epochs": EPOCHS,
+        "batch_size": BATCH_SIZE,
+        "lr": LR,
+        "embed_dim": EMBED_DIM,
+        "win": WIN,
+        "heads": HEADS,
+        "swin_depth": SWIN_DEPTH,
+        'patch_size': PATCH_SIZE,
+        'LOSS_FUNCTION': LOSS_FUNCTION,
+        'optimizer': OPTIMIZER,
+        'dropout': DROPOUT
+    },
+    )
 
-        model = UNet(256, PATCH_SIZE, 1, EMBED_DIM, WIN, HEADS, depth_values, 1, DROPOUT).to(device)
+    model = UNet(256, PATCH_SIZE, 1, EMBED_DIM, WIN, HEADS, SWIN_DEPTH, 1, DROPOUT).to(device)
 
-        if OPTIMIZER == 'ADAM':
-            optimizer = torch.optim.Adam(model.parameters(), lr=LR)
-        elif OPTIMIZER == 'ADAMW':
-            optimizer = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=0.0001)
-        elif OPTIMIZER == 'SGD_M':
-            optimizer = torch.optim.SGD(model.parameters(), lr=LR, momentum=0.9)
+    if OPTIMIZER == 'ADAM':
+        optimizer = torch.optim.Adam(model.parameters(), lr=LR)
+    elif OPTIMIZER == 'ADAMW':
+        optimizer = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=0.0001)
+    elif OPTIMIZER == 'SGD_M':
+        optimizer = torch.optim.SGD(model.parameters(), lr=LR, momentum=0.9)
 
-        train(EPOCHS, model, train_dataloader, val_dataloader, optimizer, run.name, run)
-        run.finish()
+    train(EPOCHS, model, train_dataloader, val_dataloader, optimizer, run.name, run)
+    run.finish()
 
 
 
