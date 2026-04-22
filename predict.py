@@ -1,21 +1,12 @@
 from train import UNet, create_dataframe, split_dataset
 from dataset import CTLesionSegmentation, val_test_transform
+from config import *
 from torch.utils.data import DataLoader
 import torch
 import matplotlib.pyplot as plt
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-########### PARAMETERS ############
-BATCH_SIZE = 16
-LR = 0.001
-# WEIGHT_DECAY = 1e-4 (Depends on your optmiser)
-NUM_CLASSES = 1
-patch_size = 4
-win = 8
-heads = 8
-swin_depth = 2
-embed_dim  = 96
 
 if __name__ == "__main__":
 
@@ -24,7 +15,7 @@ if __name__ == "__main__":
     test_ds  = CTLesionSegmentation(X_test,  y_test,  transform=val_test_transform)
     test_dataloader = DataLoader(test_ds, batch_size=BATCH_SIZE, shuffle=False, num_workers=4, pin_memory=True)
 
-    model = UNet(256, patch_size, 1, embed_dim, win, heads, swin_depth, 1).to(device)
+    model = UNet(256, PATCH_SIZE, 1, EMBED_DIM, WIN, HEADS, SWIN_DEPTH, 1).to(device)
     model.load_state_dict(torch.load('best_model.pth'))
     model.eval()
 

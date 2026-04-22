@@ -2,9 +2,9 @@ import torch.nn as nn
 import torch
 
 class Bottleneck(nn.Module):
-    def __init__(self, embed_dim, heads, win, img_size, patch_size):
+    def __init__(self, embed_dim, heads, win, img_size, patch_size, drop_rate):
         super().__init__()
-        self.bottleneck = BasicLayer(dim=embed_dim*8, swin_depth=2, heads=heads, win=win, res=(img_size//patch_size//8, img_size//patch_size//8))
+        self.bottleneck = BasicLayer(dim=embed_dim*8, swin_depth=2, heads=heads, win=win, res=(img_size//patch_size//8, img_size//patch_size//8), drop_rate=drop_rate)
 
     def forward(self, x, H, W):
 
@@ -14,7 +14,7 @@ class Bottleneck(nn.Module):
 
 
 class BasicLayer(nn.Module):
-    def __init__(self, dim, swin_depth, heads, win,res):
+    def __init__(self, dim, swin_depth, heads, win,res, drop_rate):
         super().__init__()
         # create a list of SwinTransformerBlocks
         # depth = number of blocks (usually 2)
@@ -25,7 +25,8 @@ class BasicLayer(nn.Module):
                 res=res,
                 win=win,
                 shift=0 if i%2==0 else win//2,
-                heads=heads
+                heads=heads,
+                drop_rate=drop_rate
             )
             for i in range(swin_depth)
         ])
@@ -36,17 +37,17 @@ class BasicLayer(nn.Module):
         return x
 
 class encoder(nn.Module):
-    def __init__(self, img_size, patch_size, in_channels, embed_dim, win, heads, swin_depth):
+    def __init__(self, img_size, patch_size, in_channels, embed_dim, win, heads, swin_depth, drop_rate):
         super().__init__()
         self.patchembed = PatchEmbed(img_size, patch_size, in_channels, embed_dim)
 
-        self.layer1 = BasicLayer(dim=embed_dim, swin_depth=swin_depth, heads=heads, win=win, res=(img_size//patch_size, img_size//patch_size))
+        self.layer1 = BasicLayer(dim=embed_dim, swin_depth=swin_depth, heads=heads, win=win, res=(img_size//patch_size, img_size//patch_size), drop_rate=drop_rate)
         self.merge1  = PatchMerging(embed_dim)
 
-        self.layer2 = BasicLayer(dim=embed_dim*2, swin_depth=swin_depth, heads=heads, win=win, res=(img_size//patch_size//2, img_size//patch_size//2))
+        self.layer2 = BasicLayer(dim=embed_dim*2, swin_depth=swin_depth, heads=heads, win=win, res=(img_size//patch_size//2, img_size//patch_size//2), drop_rate=drop_rate)
         self.merge2  = PatchMerging(embed_dim*2)
 
-        self.layer3 = BasicLayer(dim=embed_dim*4, swin_depth=swin_depth, heads=heads, win=win, res=(img_size//patch_size//4, img_size//patch_size//4))
+        self.layer3 = BasicLayer(dim=embed_dim*4, swin_depth=swin_depth, heads=heads, win=win, res=(img_size//patch_size//4, img_size//patch_size//4), drop_rate=drop_rate)
         self.merge3  = PatchMerging(embed_dim*4)
 
 
@@ -70,17 +71,17 @@ class encoder(nn.Module):
     
 
 class decoder(nn.Module):
-    def __init__(self, dim, depth, num_heads, win, img_size, patch_size):
+    def __init__(self, dim, depth, num_heads, win, img_size, patch_size, drop_rate):
         super().__init__()
 
         self.exp1 = PatchExpanding(dim*8)
-        self.layer1 = BasicLayer(dim*4, depth, num_heads, win, res=(img_size//patch_size//4,  img_size//patch_size//4))
+        self.layer1 = BasicLayer(dim*4, depth, num_heads, win, res=(img_size//patch_size//4,  img_size//patch_size//4), drop_rate=drop_rate)
 
         self.exp2 = PatchExpanding(dim*4)
-        self.layer2 = BasicLayer(dim*2, depth, num_heads, win, res=(img_size//patch_size//2,  img_size//patch_size//2))
+        self.layer2 = BasicLayer(dim*2, depth, num_heads, win, res=(img_size//patch_size//2,  img_size//patch_size//2), drop_rate=drop_rate)
 
         self.exp3 = PatchExpanding(dim*2)
-        self.layer3 = BasicLayer(dim, depth, num_heads, win, res=(img_size//patch_size,  img_size//patch_size))
+        self.layer3 = BasicLayer(dim, depth, num_heads, win, res=(img_size//patch_size,  img_size//patch_size), drop_rate=drop_rate)
 
         self.finalexp = FinalPatchExpand(dim, scale=4)
 
@@ -102,11 +103,11 @@ class decoder(nn.Module):
 
 
 class UNet(nn.Module):
-    def __init__(self, img_size, patch_size, in_channels, embed_dim, win, heads, swin_depth, num_classes):
+    def __init__(self, img_size, patch_size, in_channels, embed_dim, win, heads, swin_depth, num_classes, drop_rate):
         super().__init__()
-        self.enc = encoder(img_size, patch_size, in_channels, embed_dim, win, heads, swin_depth)
-        self.bott = Bottleneck(embed_dim, heads, win, img_size, patch_size)
-        self.dec = decoder(embed_dim, swin_depth, heads, win, img_size, patch_size)
+        self.enc = encoder(img_size, patch_size, in_channels, embed_dim, win, heads, swin_depth, drop_rate)
+        self.bott = Bottleneck(embed_dim, heads, win, img_size, patch_size, drop_rate)
+        self.dec = decoder(embed_dim, swin_depth, heads, win, img_size, patch_size, drop_rate)
         self.head = nn.Conv2d(embed_dim, num_classes, kernel_size=1)
 
     def forward(self, x):
@@ -153,13 +154,14 @@ def window_reverse(windows, win, H, W):
 
 class WindowAttention(nn.Module):
 
-    def __init__(self, dim, num_heads, win):
+    def __init__(self, dim, num_heads, win, drop_rate):
         super().__init__()
         self.dim = dim # embedding dimension
         self.num_heads = num_heads
         self.head_dim = dim // num_heads  # dimension per head
         self.scale = self.head_dim**-0.5 # 1/sqrt(dim)
         self.win = win
+        self.attn_drop = nn.Dropout(drop_rate)
 
         self.q = nn.Linear(dim, dim)
         self.k = nn.Linear(dim, dim)
@@ -208,12 +210,13 @@ class WindowAttention(nn.Module):
             attn = attn.view(-1, self.num_heads, N, N)
 
         attn = attn.softmax(dim=-1)
+        attn = self.attn_drop(attn)
         out = (attn @ v).transpose(1, 2).reshape(B_, N, C)
         out = self.proj(out)
         return out
 
 class SwinTransformerBlock(nn.Module):
-    def __init__(self, dim, res, win, shift, heads):
+    def __init__(self, dim, res, win, shift, heads, drop_rate):
         super().__init__()
         self.dim = dim
         self.res = res
@@ -221,13 +224,15 @@ class SwinTransformerBlock(nn.Module):
         self.shift = shift
 
         self.norm1 = nn.LayerNorm(dim)
-        self.attn = WindowAttention(dim, heads, win)
+        self.attn = WindowAttention(dim, heads, win, drop_rate)
 
         self.norm2 = nn.LayerNorm(dim)
         self.mlp = nn.Sequential( 
             nn.Linear(dim, 4*dim),
             nn.GELU(),
-            nn.Linear(4*dim, dim))
+            nn.Dropout(drop_rate),
+            nn.Linear(4*dim, dim),
+            nn.Dropout(drop_rate))
         
         H, W = res
 

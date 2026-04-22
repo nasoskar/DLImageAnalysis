@@ -2,31 +2,44 @@ from torch.utils.data import Dataset, DataLoader
 from sklearn.model_selection import train_test_split
 from PIL import Image
 from albumentations.pytorch import ToTensorV2
-
+from config import IMAGE_SIZE
 import os
 import albumentations as A
 import numpy as np
 import torch
 import pandas as pd
 
+def find_mean_std():
+    img_dir = 'frames'
+    means, stds = [], []
+    for file in os.listdir(img_dir):
+        if file.endswith('.png'):
+            img = np.array(Image.open(os.path.join(img_dir, file)).convert('L')) / 255.0
+            means.append(img.mean())
+            stds.append(img.std())
 
-train_transform = A.Compose([
-    A.Resize(256, 256), #resize all images to have the same size 
-    A.HorizontalFlip(p=0.5),
-    A.VerticalFlip(p=0.5),
-    A.RandomRotate90(p=0.5),
-    A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, p=0.5),
-    A.Normalize(mean=(0.485, 0.456, 0.406), #use the mean and std of ImageNet when using a pre-trained encoder
-                std=(0.229, 0.224, 0.225)),
-    ToTensorV2()
-])
+    mean_d = np.mean(means)
+    std_d  = np.mean(stds)
 
-val_test_transform = A.Compose([
-    A.Resize(256, 256),
-    A.Normalize(mean=(0.485, 0.456, 0.406),
-                std=(0.229, 0.224, 0.225)),
-    ToTensorV2()
-])
+    return mean_d, std_d
+
+def transforms(mean_d, std_d):
+    train_transform = A.Compose([
+        A.Resize(IMAGE_SIZE, IMAGE_SIZE), #resize all images to have the same size 
+        A.HorizontalFlip(p=0.5),
+        A.VerticalFlip(p=0.5),
+        A.RandomRotate90(p=0.5),
+        A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, p=0.5),
+        A.Normalize(mean=mean_d, std=std_d), #use the mean and std of the specific dataset
+        ToTensorV2()
+    ])
+
+    val_test_transform = A.Compose([
+        A.Resize(256, 256),
+        A.Normalize(mean=mean_d, std=std_d),
+        ToTensorV2()
+    ])
+    return train_transform, val_test_transform
 
 class CTLesionSegmentation(Dataset):
     def __init__(self, images, masks, transform=None):
