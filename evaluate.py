@@ -62,7 +62,7 @@ if __name__== "__main__":
     test_dataloader = DataLoader(test_ds, batch_size=BATCH_SIZE, shuffle=False, num_workers=4, pin_memory=True)
 
     model = UNet(IMAGE_SIZE, PATCH_SIZE, IN_CHANNELS, EMBED_DIM, WIN, HEADS, SWIN_DEPTH, 1).to(device)
-    model.load_state_dict(torch.load('checkpoints/best_model_best_params_phase1.pth'))
+    model.load_state_dict(torch.load('checkpoints/best_model_phase2_attention.pth'))
     model.eval()
     mean_dice, mean_iou = test(model, test_dataloader)
     wandb.log({"test_dice": mean_dice, "test_iou": mean_iou})

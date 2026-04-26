@@ -13,5 +13,6 @@ IMAGE_SIZE = 256
 OPTIMIZER = 'ADAMW' #['ADAM','SGD_M'] 
 DROPOUT = 0.2 #[0.0, 0.1]
 IN_CHANNELS = 1
+USE_ATTENTION = 'TRUE' #'FALSE' #whether to use attention gates in skip connections or not
 
 
