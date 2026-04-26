@@ -103,7 +103,7 @@ class decoder(nn.Module):
 
 
 class UNet(nn.Module):
-    def __init__(self, img_size, patch_size, in_channels, embed_dim, win, heads, swin_depth, num_classes, drop_rate):
+    def __init__(self, img_size, patch_size, in_channels, embed_dim, win, heads, swin_depth, num_classes, drop_rate=0.0):
         super().__init__()
         self.enc = encoder(img_size, patch_size, in_channels, embed_dim, win, heads, swin_depth, drop_rate)
         self.bott = Bottleneck(embed_dim, heads, win, img_size, patch_size, drop_rate)

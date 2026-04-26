@@ -1,5 +1,5 @@
 from train import UNet, loss_function, dice_loss, create_dataframe, split_dataset
-from dataset import CTLesionSegmentation, val_test_transform
+from dataset import CTLesionSegmentation, find_mean_std, transforms
 from config import *
 from torch.utils.data import DataLoader
 import torch
@@ -52,15 +52,17 @@ if __name__== "__main__":
 
     wandb.init(
     project="CT-scan-segmentation",
-    name="evaluation",
+    name="evaluation_best_params_phase1",
     config={"threshold": 0.5}
     )
 
+    mean_d, std_d = find_mean_std()
+    train_transform, val_test_transform = transforms(mean_d, std_d)
     test_ds  = CTLesionSegmentation(X_test,  y_test,  transform=val_test_transform)
     test_dataloader = DataLoader(test_ds, batch_size=BATCH_SIZE, shuffle=False, num_workers=4, pin_memory=True)
 
-    model = UNet(256, PATCH_SIZE, 1, EMBED_DIM, WIN, HEADS, SWIN_DEPTH, 1).to(device)
-    model.load_state_dict(torch.load('best_model.pth'))
+    model = UNet(IMAGE_SIZE, PATCH_SIZE, IN_CHANNELS, EMBED_DIM, WIN, HEADS, SWIN_DEPTH, 1).to(device)
+    model.load_state_dict(torch.load('checkpoints/best_model_best_params_phase1.pth'))
     model.eval()
     mean_dice, mean_iou = test(model, test_dataloader)
     wandb.log({"test_dice": mean_dice, "test_iou": mean_iou})

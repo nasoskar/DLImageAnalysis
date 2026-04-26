@@ -31,12 +31,16 @@ def transforms(mean_d, std_d):
         A.RandomRotate90(p=0.5),
         A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, p=0.5),
         A.Normalize(mean=mean_d, std=std_d), #use the mean and std of the specific dataset
+        #A.Normalize(mean=(0.485, 0.456, 0.406), #pre-trained weights
+        #    std=(0.229, 0.224, 0.225)),
         ToTensorV2()
     ])
 
     val_test_transform = A.Compose([
-        A.Resize(256, 256),
+        A.Resize(IMAGE_SIZE, IMAGE_SIZE),
         A.Normalize(mean=mean_d, std=std_d),
+        #A.Normalize(mean=(0.485, 0.456, 0.406), #pre-trained weights
+        #    std=(0.229, 0.224, 0.225)),
         ToTensorV2()
     ])
     return train_transform, val_test_transform
@@ -52,7 +56,7 @@ class CTLesionSegmentation(Dataset):
 
     def __getitem__(self, idx):
 
-        image = Image.open(self.data[idx]).convert('L') # grayscale images
+        image = Image.open(self.data[idx]).convert('L') # RGB for pre-trained weights 
         image_np = np.array(image)
 
         masks = Image.open(self.masks[idx]).convert('L')

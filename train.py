@@ -86,6 +86,7 @@ def train(epochs, model, train_dataloader, val_dataloader, optimizer, name, run)
 
         with torch.no_grad():  
             for inputs, labels in val_dataloader:
+            #for i, (inputs, labels) in enumerate(val_dataloader):
                 inputs = inputs.to(device)
                 labels = labels.to(device)
                 
@@ -138,7 +139,7 @@ if __name__ == "__main__":
 
     run = wandb.init(
     entity="nasosk16-city-university-of-london",
-    name=f"BEST_PARAMS_VANILLA",
+    name=f"best_params_phase1",
     project="CT-scan-segmentation",
 
     config={
@@ -156,7 +157,7 @@ if __name__ == "__main__":
     },
     )
 
-    model = UNet(256, PATCH_SIZE, 1, EMBED_DIM, WIN, HEADS, SWIN_DEPTH, 1, DROPOUT).to(device)
+    model = UNet(IMAGE_SIZE, PATCH_SIZE, IN_CHANNELS, EMBED_DIM, WIN, HEADS, SWIN_DEPTH, 1, DROPOUT).to(device)
 
     if OPTIMIZER == 'ADAM':
         optimizer = torch.optim.Adam(model.parameters(), lr=LR)
