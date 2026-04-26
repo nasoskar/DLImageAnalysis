@@ -139,7 +139,7 @@ if __name__ == "__main__":
 
     run = wandb.init(
     entity="nasosk16-city-university-of-london",
-    name=f"best_params_phase1",
+    name=f"phase2_attention_100epochs",
     project="CT-scan-segmentation",
 
     config={
@@ -153,7 +153,8 @@ if __name__ == "__main__":
         'patch_size': PATCH_SIZE,
         'LOSS_FUNCTION': LOSS_FUNCTION,
         'optimizer': OPTIMIZER,
-        'dropout': DROPOUT
+        'dropout': DROPOUT,
+        'attention': USE_ATTENTION
     },
     )
 

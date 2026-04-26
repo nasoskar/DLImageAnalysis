@@ -1,5 +1,6 @@
 import torch.nn as nn
 import torch
+from config import USE_ATTENTION
 
 class Bottleneck(nn.Module):
     def __init__(self, embed_dim, heads, win, img_size, patch_size, drop_rate):
@@ -85,15 +86,26 @@ class decoder(nn.Module):
 
         self.finalexp = FinalPatchExpand(dim, scale=4)
 
+        if USE_ATTENTION == 'TRUE':
+            self.ag1 = AttentionGate(F_g=dim*4, F_l=dim*4, F_int=dim*2) #attention gates
+            self.ag2 = AttentionGate(F_g=dim*2, F_l=dim*2, F_int=dim)
+            self.ag3 = AttentionGate(F_g=dim,   F_l=dim,   F_int=dim//2)
+
     def forward(self, x, H, W, skip1, skip2, skip3):
 
-        x, H, W = self.exp1(x, H, W)#TODO: concat instead of addition
+        x, H, W = self.exp1(x, H, W)
+        if USE_ATTENTION == 'TRUE':
+            skip3 = self.ag1(g=x, x=skip3)
         x = self.layer1(x + skip3,H,W)
 
         x, H, W = self.exp2(x, H, W)
+        if USE_ATTENTION == 'TRUE':
+            skip2 = self.ag2(g=x, x=skip2) 
         x = self.layer2(x + skip2,H,W)
 
         x, H, W = self.exp3(x, H, W)
+        if USE_ATTENTION == 'TRUE':
+            skip1 = self.ag3(g=x, x=skip1)
         x = self.layer3(x + skip1,H,W)
 
         x, H, W = self.finalexp(x, H, W)
@@ -363,3 +375,25 @@ class FinalPatchExpand(nn.Module):
         x = self.norm(x)
 
         return x, H*self.scale, W*self.scale
+    
+class AttentionGate(nn.Module):
+    def __init__(self, F_g, F_l, F_int):
+        super().__init__()
+        self.W_g = nn.Sequential(
+            nn.Linear(F_g, F_int, bias=False),
+            nn.LayerNorm(F_int)
+        )
+        self.W_x = nn.Sequential(
+            nn.Linear(F_l, F_int, bias=False),
+            nn.LayerNorm(F_int)
+        )
+        self.psi = nn.Sequential(
+            nn.Linear(F_int, 1, bias=False),
+            nn.Sigmoid()
+        )
+
+    def forward(self, g, x):
+        g1 = self.W_g(g)
+        x1 = self.W_x(x)
+        psi = self.psi(torch.relu(g1 + x1))
+        return x * psi
